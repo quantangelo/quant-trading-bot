@@ -1,0 +1,58 @@
+{
+  "initial_cash": 100000.0,
+  "data": {
+    "source": "cache",
+    "path": "data/demo",
+    "symbols": ["SPY", "QQQ", "TLT", "GLD", "IEF", "EFA", "EEM", "VNQ", "DBC"],
+    "start": "2005-01-01",
+    "end": null,
+    "cache_path": "data/raw"
+  },
+  "benchmark": {
+    "weights": {
+      "SPY": 0.6,
+      "IEF": 0.4
+    }
+  },
+  "strategy": {
+    "name": "dual_momentum",
+    "short_window": 40,
+    "long_window": 160,
+    "vol_window": 20,
+    "target_annual_vol": 0.10,
+    "rebalance_frequency": "W-FRI",
+    "momentum_window": 126,
+    "top_n": 3,
+    "regime_filter": true,
+    "regime_symbol": "SPY",
+    "regime_window": 200,
+    "regime_risk_off_weight": 0.75,
+    "defensive_assets": ["IEF", "TLT", "GLD"],
+    "defensive_top_n": 1,
+    "defensive_momentum_window": 63,
+    "allocation_method": "correlation_adjusted",
+    "correlation_window": 63,
+    "correlation_penalty": 1.0
+  },
+  "risk": {
+    "max_symbol_weight": 0.35,
+    "max_gross_exposure": 1.00,
+    "max_drawdown": 0.20,
+    "min_cash": 0.02
+  },
+  "costs": {
+    "commission_bps": 0.5,
+    "slippage_bps": 1.0,
+    "spread_bps": 0.5,
+    "min_commission": 0.0,
+    "volume_limit_pct": 0.05,
+    "execution_price": "close"
+  },
+  "validation": {
+    "min_sharpe": 0.7,
+    "max_drawdown": 0.25,
+    "min_trades": 20,
+    "min_benchmark_excess_return": 0.0,
+    "require_lower_drawdown_than_benchmark": true
+  }
+}

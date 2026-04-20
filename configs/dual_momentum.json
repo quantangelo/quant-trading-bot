@@ -1,0 +1,55 @@
+{
+  "initial_cash": 100000.0,
+  "data": {
+    "source": "csv",
+    "path": "data/demo",
+    "symbols": ["SPY", "TLT", "GLD"],
+    "start": null,
+    "end": null,
+    "cache_path": "data/raw"
+  },
+  "benchmark": {
+    "symbol": "SPY"
+  },
+  "strategy": {
+    "name": "dual_momentum",
+    "short_window": 40,
+    "long_window": 160,
+    "vol_window": 20,
+    "target_annual_vol": 0.10,
+    "rebalance_frequency": "W-FRI",
+    "momentum_window": 126,
+    "top_n": 2,
+    "regime_filter": true,
+    "regime_symbol": "SPY",
+    "regime_window": 200,
+    "regime_risk_off_weight": 0.50,
+    "defensive_assets": ["TLT", "GLD"],
+    "defensive_top_n": 1,
+    "defensive_momentum_window": 63,
+    "allocation_method": "correlation_adjusted",
+    "correlation_window": 63,
+    "correlation_penalty": 1.0
+  },
+  "risk": {
+    "max_symbol_weight": 0.50,
+    "max_gross_exposure": 1.00,
+    "max_drawdown": 0.20,
+    "min_cash": 0.02
+  },
+  "costs": {
+    "commission_bps": 0.5,
+    "slippage_bps": 1.0,
+    "spread_bps": 0.5,
+    "min_commission": 0.0,
+    "volume_limit_pct": 0.10,
+    "execution_price": "close"
+  },
+  "validation": {
+    "min_sharpe": 0.6,
+    "max_drawdown": 0.25,
+    "min_trades": 8,
+    "min_benchmark_excess_return": -0.50,
+    "require_lower_drawdown_than_benchmark": false
+  }
+}
