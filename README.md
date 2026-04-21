@@ -94,6 +94,7 @@ Write analytics tables and plots:
 ```powershell
 python -m quantbot.cli analytics --config configs/example.json
 python -m quantbot.cli plots --config configs/example.json
+python -m quantbot.cli dashboard --config configs/example.json
 ```
 
 Check data quality and run Monte Carlo robustness:

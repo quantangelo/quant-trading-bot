@@ -10,6 +10,7 @@ from .backtest import optimize, parameter_stability, run_backtest, select_stable
 from .analytics import write_analytics
 from .broker import DryRunBroker, PaperAccount, PaperBroker
 from .config import load_config
+from .dashboard import write_dashboard
 from .data import download_yahoo_to_cache, load_market_data, make_demo_data, missing_cached_symbols
 from .monte_carlo import monte_carlo_summary, simulate_return_paths, write_monte_carlo
 from .news_risk import fetch_rss_news, load_local_news, score_news, should_block_trading, write_news_risk_report
@@ -118,6 +119,13 @@ def main() -> None:
     plots = sub.add_parser("plots")
     plots.add_argument("--config", required=True)
     plots.add_argument("--out-dir", default="reports/plots")
+
+    dashboard = sub.add_parser("dashboard")
+    dashboard.add_argument("--config", required=True)
+    dashboard.add_argument("--out", default="reports/dashboard.html")
+    dashboard.add_argument("--news-risk", default="reports/news_risk.csv")
+    dashboard.add_argument("--monte-carlo", default="reports/monte_carlo_smoke/monte_carlo_summary.csv")
+    dashboard.add_argument("--quality", default="reports/data_quality.csv")
 
     args = parser.parse_args()
     if args.command == "make-demo-data":
@@ -280,6 +288,11 @@ def main() -> None:
         print("Plots written:")
         for path in paths:
             print(f"- {path}")
+    elif args.command == "dashboard":
+        config = load_config(args.config)
+        result = run_backtest(load_market_data(config.data), config)
+        path = write_dashboard(result, config, args.out, args.news_risk, args.monte_carlo, args.quality)
+        print(f"Dashboard written to {path}")
 
 
 def _print_performance(result) -> None:

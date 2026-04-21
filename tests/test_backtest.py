@@ -10,6 +10,7 @@ from quantbot.broker import PaperAccount
 from quantbot.broker import Order
 from quantbot.config import BotConfig, CostConfig, DataConfig, RiskConfig, StrategyConfig, ValidationConfig
 from quantbot.config import BenchmarkConfig
+from quantbot.dashboard import write_dashboard
 from quantbot.data import load_csv_data, make_demo_data
 from quantbot.monte_carlo import monte_carlo_summary, simulate_return_paths
 from quantbot.news_risk import NewsItem, score_news, should_block_trading
@@ -283,6 +284,18 @@ class BacktestTests(unittest.TestCase):
         self.assertIn("middle_east_conflict", themes)
         self.assertIn("oil_supply_shock", themes)
         self.assertTrue(should_block_trading(summary, 0.5))
+
+    def test_dashboard_writes_html(self):
+        with TemporaryDirectory() as tmp:
+            make_demo_data(tmp)
+            config = self.config(tmp)
+            data = load_csv_data(tmp, config.data.symbols, None, None)
+            result = run_backtest(data, config)
+            path = write_dashboard(result, config, f"{tmp}/dashboard.html", None, None, None)
+            content = path.read_text(encoding="utf-8")
+            self.assertIn("Quant Bot Dashboard", content)
+            self.assertIn("Executive Snapshot", content)
+            self.assertIn("Equity Curve vs Benchmark", content)
 
 
 def _restore_env(name: str, value: str | None) -> None:
