@@ -4,12 +4,15 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
 
+from quantbot.alpaca_broker import AlpacaPaperBroker, split_order
 from quantbot.backtest import run_backtest, select_stable_candidate, walk_forward_optimized
 from quantbot.broker import PaperAccount
+from quantbot.broker import Order
 from quantbot.config import BotConfig, CostConfig, DataConfig, RiskConfig, StrategyConfig, ValidationConfig
 from quantbot.config import BenchmarkConfig
 from quantbot.data import load_csv_data, make_demo_data
 from quantbot.monte_carlo import monte_carlo_summary, simulate_return_paths
+from quantbot.news_risk import NewsItem, score_news, should_block_trading
 from quantbot.quality import check_market_data
 from quantbot.strategy import build_weights
 
@@ -246,6 +249,48 @@ class BacktestTests(unittest.TestCase):
         summary = monte_carlo_summary(paths)
         self.assertEqual(len(paths), 25)
         self.assertIn("loss_probability", set(summary["metric"]))
+
+    def test_alpaca_requires_paper_flag(self):
+        old_key = __import__("os").environ.get("ALPACA_API_KEY")
+        old_secret = __import__("os").environ.get("ALPACA_SECRET_KEY")
+        old_paper = __import__("os").environ.get("ALPACA_PAPER")
+        os = __import__("os")
+        try:
+            os.environ["ALPACA_API_KEY"] = "key"
+            os.environ["ALPACA_SECRET_KEY"] = "secret"
+            os.environ["ALPACA_PAPER"] = "false"
+            with self.assertRaises(RuntimeError):
+                AlpacaPaperBroker()
+        finally:
+            _restore_env("ALPACA_API_KEY", old_key)
+            _restore_env("ALPACA_SECRET_KEY", old_secret)
+            _restore_env("ALPACA_PAPER", old_paper)
+
+    def test_alpaca_order_splitting(self):
+        order = Order("DBC", 0.35, 0.35, 35_000.0, "BUY")
+        chunks = split_order(order, 5_000.0)
+        self.assertEqual(len(chunks), 7)
+        self.assertEqual(sum(abs(chunk.estimated_notional) for chunk in chunks), 35_000.0)
+        self.assertTrue(all(abs(chunk.estimated_notional) <= 5_000.0 for chunk in chunks))
+
+    def test_news_risk_detects_oil_geopolitics(self):
+        items = [
+            NewsItem("Iran conflict raises fears over Strait of Hormuz oil supply disruption", "test"),
+            NewsItem("Retail earnings calendar remains quiet", "test"),
+        ]
+        hits, summary = score_news(items, ["SPY", "QQQ", "GLD", "DBC", "TLT"])
+        themes = {hit.theme for hit in hits}
+        self.assertIn("middle_east_conflict", themes)
+        self.assertIn("oil_supply_shock", themes)
+        self.assertTrue(should_block_trading(summary, 0.5))
+
+
+def _restore_env(name: str, value: str | None) -> None:
+    os = __import__("os")
+    if value is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = value
 
 
 if __name__ == "__main__":

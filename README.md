@@ -104,6 +104,19 @@ python -m quantbot.cli monte-carlo --config configs/example.json --simulations 1
 python -m quantbot.cli report --config configs/example.json --monte-carlo
 ```
 
+Scan news risk from RSS feeds or a local headline file:
+
+```powershell
+python -m quantbot.cli news-risk --config configs/real_data.json
+python -m quantbot.cli news-risk --config configs/real_data.json --news-file headlines.txt
+```
+
+Block broker submission when news risk is high:
+
+```powershell
+python -m quantbot.cli paper --config configs/real_data.json --broker alpaca-paper --news-risk-check --news-risk-threshold 0.75
+```
+
 Create current paper orders from the latest bar:
 
 ```powershell
@@ -115,6 +128,17 @@ Update a persistent paper account and submit to the dry-run broker:
 ```powershell
 python -m quantbot.cli paper --config configs/example.json --state orders/paper_state.json --submit-dry-run
 ```
+
+Submit paper orders to Alpaca:
+
+```powershell
+$env:ALPACA_API_KEY="your-paper-key"
+$env:ALPACA_SECRET_KEY="your-paper-secret"
+$env:ALPACA_PAPER="true"
+python -m quantbot.cli paper --config configs/real_data.json --broker alpaca-paper --max-order-notional 5000
+```
+
+Alpaca submission is paper-only and refuses to run unless `ALPACA_PAPER=true`.
 
 Run tests:
 

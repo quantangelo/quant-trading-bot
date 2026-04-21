@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from .alpaca_broker import AlpacaPaperBroker
 from .backtest import optimize, parameter_stability, run_backtest, select_stable_candidate, walk_forward, walk_forward_optimized
 from .analytics import write_analytics
 from .broker import DryRunBroker, PaperAccount, PaperBroker
 from .config import load_config
 from .data import download_yahoo_to_cache, load_market_data, make_demo_data, missing_cached_symbols
 from .monte_carlo import monte_carlo_summary, simulate_return_paths, write_monte_carlo
+from .news_risk import fetch_rss_news, load_local_news, score_news, should_block_trading, write_news_risk_report
 from .plotting import write_plots
 from .quality import check_market_data, quality_summary, write_quality_report
 from .report import write_markdown_report
@@ -76,6 +78,20 @@ def main() -> None:
     paper.add_argument("--out", default="orders/paper_orders.csv")
     paper.add_argument("--state", default=None)
     paper.add_argument("--submit-dry-run", action="store_true")
+    paper.add_argument("--broker", choices=["none", "dry-run", "alpaca-paper"], default="none")
+    paper.add_argument("--alpaca-receipts-out", default="orders/alpaca_submissions.csv")
+    paper.add_argument("--max-order-notional", type=float, default=10_000.0)
+    paper.add_argument("--news-risk-check", action="store_true")
+    paper.add_argument("--news-file", default=None)
+    paper.add_argument("--news-risk-threshold", type=float, default=0.75)
+    paper.add_argument("--news-risk-out", default="reports/news_risk.csv")
+
+    news = sub.add_parser("news-risk")
+    news.add_argument("--config", required=True)
+    news.add_argument("--news-file", default=None)
+    news.add_argument("--rss", nargs="*", default=None)
+    news.add_argument("--limit", type=int, default=50)
+    news.add_argument("--out", default="reports/news_risk.csv")
 
     report = sub.add_parser("report")
     report.add_argument("--config", required=True)
@@ -182,14 +198,34 @@ def main() -> None:
         orders = broker.orders_from_weights(previous, target)
         path = broker.write_orders(orders, args.out)
         print(f"Paper orders written to {path}")
+        if args.news_risk_check:
+            hits, summary = _run_news_risk(config.data.symbols, args.news_file, None, 50, args.news_risk_out)
+            print(f"News risk: {summary['risk_level']} score {float(summary['max_score']):.2f}, action {summary['action']}")
+            if should_block_trading(summary, args.news_risk_threshold):
+                print(f"Broker submission blocked by news risk threshold {args.news_risk_threshold:.2f}")
+                return
         if args.state:
             prices = closes.iloc[-1]
             account = PaperAccount(args.state, config.initial_cash)
             fills = account.rebalance_to_weights(target, prices)
             print(f"Paper account updated: {len(fills)} fills, equity {account.equity(prices):.2f}")
-        if args.submit_dry_run:
+        if args.submit_dry_run or args.broker == "dry-run":
             receipts = DryRunBroker().submit_orders(orders)
             print(f"Dry-run broker accepted {len(receipts)} orders")
+        if args.broker == "alpaca-paper":
+            alpaca = AlpacaPaperBroker(max_order_notional=args.max_order_notional)
+            receipts = alpaca.submit_orders(orders)
+            receipts_path = alpaca.write_receipts(receipts, args.alpaca_receipts_out)
+            print(f"Alpaca paper broker submitted {len(receipts)} child orders from {len(orders)} target orders")
+            print(f"Alpaca receipts written to {receipts_path}")
+    elif args.command == "news-risk":
+        config = load_config(args.config)
+        hits, summary = _run_news_risk(config.data.symbols, args.news_file, args.rss, args.limit, args.out)
+        print(f"News risk report written to {args.out}")
+        print(f"Headlines: {summary['headline_count']}, hits: {summary['hit_count']}, max score: {float(summary['max_score']):.2f}")
+        print(f"Risk level: {summary['risk_level']}, action: {summary['action']}")
+        if hits:
+            print(pd.DataFrame([hit.__dict__ for hit in hits]).head(10).to_string(index=False))
     elif args.command == "report":
         config = load_config(args.config)
         result = run_backtest(load_market_data(config.data), config)
@@ -283,6 +319,13 @@ def _read_previous_weights(path: str | None, symbols: pd.Index) -> pd.Series:
     if not {"symbol", "weight"}.issubset(frame.columns):
         raise ValueError("previous weights file must include symbol,weight columns")
     return frame.set_index("symbol")["weight"].reindex(symbols).fillna(0.0)
+
+
+def _run_news_risk(symbols: list[str], news_file: str | None, rss: list[str] | None, limit: int, output: str):
+    items = load_local_news(news_file) if news_file else fetch_rss_news(rss or None, limit=limit)
+    hits, summary = score_news(items, symbols)
+    write_news_risk_report(hits, summary, output)
+    return hits, summary
 
 
 if __name__ == "__main__":
