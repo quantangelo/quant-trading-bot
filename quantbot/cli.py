@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .alpaca_broker import AlpacaPaperBroker
+from .alpaca_broker import AlpacaPaperBroker, split_order
 from .backtest import optimize, parameter_stability, run_backtest, select_stable_candidate, walk_forward, walk_forward_optimized
 from .analytics import write_analytics
 from .broker import DryRunBroker, PaperAccount, PaperBroker
@@ -81,6 +81,9 @@ def main() -> None:
     paper.add_argument("--submit-dry-run", action="store_true")
     paper.add_argument("--broker", choices=["none", "dry-run", "alpaca-paper"], default="none")
     paper.add_argument("--alpaca-receipts-out", default="orders/alpaca_submissions.csv")
+    paper.add_argument("--alpaca-positions-out", default="orders/alpaca_positions.csv")
+    paper.add_argument("--alpaca-account-out", default="orders/alpaca_account.csv")
+    paper.add_argument("--use-alpaca-positions", action="store_true")
     paper.add_argument("--max-order-notional", type=float, default=10_000.0)
     paper.add_argument("--news-risk-check", action="store_true")
     paper.add_argument("--news-file", default=None)
@@ -93,6 +96,13 @@ def main() -> None:
     news.add_argument("--rss", nargs="*", default=None)
     news.add_argument("--limit", type=int, default=50)
     news.add_argument("--out", default="reports/news_risk.csv")
+
+    alpaca_orders = sub.add_parser("alpaca-orders")
+    alpaca_orders.add_argument("--status", choices=["open", "closed", "all"], default="all")
+    alpaca_orders.add_argument("--limit", type=int, default=100)
+    alpaca_orders.add_argument("--orders-out", default="orders/alpaca_order_status.csv")
+    alpaca_orders.add_argument("--positions-out", default="orders/alpaca_positions.csv")
+    alpaca_orders.add_argument("--account-out", default="orders/alpaca_account.csv")
 
     report = sub.add_parser("report")
     report.add_argument("--config", required=True)
@@ -201,11 +211,27 @@ def main() -> None:
         closes = pd.DataFrame({symbol: frame["close"] for symbol, frame in data.items()}).ffill().dropna()
         weights = build_weights(closes, config.strategy, config.risk)
         target = weights.iloc[-1]
-        previous = _read_previous_weights(args.previous_weights, target.index)
-        broker = PaperBroker(config.initial_cash)
+        alpaca = None
+        account_equity = config.initial_cash
+        if args.use_alpaca_positions:
+            alpaca = AlpacaPaperBroker(max_order_notional=args.max_order_notional)
+            previous, account_equity, positions, account = alpaca.current_weights(target.index)
+            positions_path, account_path = alpaca.write_position_snapshot(
+                positions,
+                account,
+                args.alpaca_positions_out,
+                args.alpaca_account_out,
+            )
+            print(f"Alpaca positions snapshot written to {positions_path}")
+            print(f"Alpaca account snapshot written to {account_path}")
+            print(f"Using Alpaca paper equity {account_equity:.2f} and live paper positions as current weights")
+        else:
+            previous = _read_previous_weights(args.previous_weights, target.index)
+        broker = PaperBroker(account_equity)
         orders = broker.orders_from_weights(previous, target)
         path = broker.write_orders(orders, args.out)
         print(f"Paper orders written to {path}")
+        _print_order_summary(orders, args.max_order_notional)
         if args.news_risk_check:
             hits, summary = _run_news_risk(config.data.symbols, args.news_file, None, 50, args.news_risk_out)
             print(f"News risk: {summary['risk_level']} score {float(summary['max_score']):.2f}, action {summary['action']}")
@@ -221,11 +247,21 @@ def main() -> None:
             receipts = DryRunBroker().submit_orders(orders)
             print(f"Dry-run broker accepted {len(receipts)} orders")
         if args.broker == "alpaca-paper":
-            alpaca = AlpacaPaperBroker(max_order_notional=args.max_order_notional)
+            alpaca = alpaca or AlpacaPaperBroker(max_order_notional=args.max_order_notional)
             receipts = alpaca.submit_orders(orders)
             receipts_path = alpaca.write_receipts(receipts, args.alpaca_receipts_out)
             print(f"Alpaca paper broker submitted {len(receipts)} child orders from {len(orders)} target orders")
             print(f"Alpaca receipts written to {receipts_path}")
+    elif args.command == "alpaca-orders":
+        alpaca = AlpacaPaperBroker()
+        orders = alpaca.get_orders(args.status, args.limit)
+        positions = alpaca.get_positions()
+        account = alpaca.get_account()
+        orders_path = alpaca.write_order_status(orders, args.orders_out)
+        positions_path, account_path = alpaca.write_position_snapshot(positions, account, args.positions_out, args.account_out)
+        print(f"Alpaca orders written to {orders_path} ({len(orders)} rows)")
+        print(f"Alpaca positions written to {positions_path} ({len(positions)} rows)")
+        print(f"Alpaca account written to {account_path}")
     elif args.command == "news-risk":
         config = load_config(args.config)
         hits, summary = _run_news_risk(config.data.symbols, args.news_file, args.rss, args.limit, args.out)
@@ -332,6 +368,14 @@ def _read_previous_weights(path: str | None, symbols: pd.Index) -> pd.Series:
     if not {"symbol", "weight"}.issubset(frame.columns):
         raise ValueError("previous weights file must include symbol,weight columns")
     return frame.set_index("symbol")["weight"].reindex(symbols).fillna(0.0)
+
+
+def _print_order_summary(orders, max_order_notional: float) -> None:
+    buys = sum(abs(order.estimated_notional) for order in orders if order.side == "BUY")
+    sells = sum(abs(order.estimated_notional) for order in orders if order.side == "SELL")
+    child_count = sum(len(split_order(order, max_order_notional)) for order in orders)
+    print(f"Order summary: {len(orders)} target orders, {child_count} broker child orders")
+    print(f"Buy notional: {buys:.2f}; sell notional: {sells:.2f}")
 
 
 def _run_news_risk(symbols: list[str], news_file: str | None, rss: list[str] | None, limit: int, output: str):

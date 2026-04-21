@@ -23,6 +23,8 @@ It is not a promise of profitability. No trading bot can guarantee profits. The 
 - Generates local paper orders and maintains a local paper account state.
 - Submits paper orders to Alpaca using paper credentials only.
 - Splits Alpaca notional orders into child orders under a configurable max notional cap.
+- Can sync Alpaca paper order status, positions, and account equity.
+- Can rebalance from actual Alpaca paper positions to avoid duplicate buying on repeated runs.
 - Scans news headlines/RSS feeds for macro risk themes and can block broker submission when news risk is high.
 - Includes standard-library tests via `unittest`.
 
@@ -698,6 +700,28 @@ Important behavior:
 - Large target orders are split into child orders under `--max-order-notional`.
 - During non-US market hours, Alpaca may show orders as `accepted` with filled quantity `0.00` until the US market opens.
 
+Sync Alpaca paper order status, positions, and account details:
+
+```powershell
+python -m quantbot.cli alpaca-orders
+```
+
+Outputs:
+
+```text
+orders/alpaca_order_status.csv
+orders/alpaca_positions.csv
+orders/alpaca_account.csv
+```
+
+Use actual Alpaca paper positions as the current portfolio before generating new rebalance orders:
+
+```powershell
+python -m quantbot.cli paper --config configs/real_data.json --use-alpaca-positions --broker alpaca-paper --max-order-notional 5000
+```
+
+This mode pulls current Alpaca paper positions and account equity, converts the positions into current weights, then generates only the trades needed to move from the current paper portfolio to the latest target weights. This is the safer command to use after the first paper-trading run because it helps prevent buying the same target allocation repeatedly.
+
 ## Suggested Real-Data Research Workflow
 
 Run this before any paper trading:
@@ -738,6 +762,7 @@ optimize            Run a parameter grid
 stability           Score parameter stability and optionally select stable candidate
 walk-forward        Run fixed or optimized walk-forward validation
 paper               Generate paper orders, update local paper state, or submit to broker
+alpaca-orders       Sync Alpaca paper orders, positions, and account snapshot
 news-risk           Scan headlines/RSS feeds for macro risk themes
 report              Write markdown performance report
 quality             Run market-data quality checks
@@ -779,6 +804,7 @@ The test suite covers:
 - data quality checks
 - Monte Carlo summaries
 - Alpaca paper guardrails and order splitting
+- Alpaca status and position normalization
 - news-risk detection
 - dashboard generation
 
@@ -812,7 +838,7 @@ This keeps source code and configs in git while excluding downloaded market data
 
 ## Roadmap Ideas
 
-- Broker order-status sync and filled quantity reconciliation.
+- Filled quantity reconciliation into a persistent local broker ledger.
 - Scheduled paper-trading runs.
 - Email/Telegram/Discord alerts.
 - Asset-class exposure constraints.

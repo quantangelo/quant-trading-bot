@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
 
-from quantbot.alpaca_broker import AlpacaPaperBroker, split_order
+from quantbot.alpaca_broker import AlpacaPaperBroker, normalize_order_status, normalize_position, split_order
 from quantbot.backtest import run_backtest, select_stable_candidate, walk_forward_optimized
 from quantbot.broker import PaperAccount
 from quantbot.broker import Order
@@ -273,6 +273,32 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(len(chunks), 7)
         self.assertEqual(sum(abs(chunk.estimated_notional) for chunk in chunks), 35_000.0)
         self.assertTrue(all(abs(chunk.estimated_notional) <= 5_000.0 for chunk in chunks))
+
+    def test_alpaca_status_normalizers(self):
+        class Dummy:
+            pass
+
+        order = Dummy()
+        order.symbol = "GLD"
+        order.side = "buy"
+        order.notional = "5000"
+        order.filled_qty = "12.5"
+        order.status = "accepted"
+        order.id = "order-1"
+        normalized_order = normalize_order_status(order)
+        self.assertEqual(normalized_order["symbol"], "GLD")
+        self.assertEqual(normalized_order["status"], "accepted")
+        self.assertEqual(normalized_order["filled_qty"], "12.5")
+
+        position = Dummy()
+        position.symbol = "GLD"
+        position.qty = "12.5"
+        position.market_value = "2500.50"
+        position.current_price = "200.04"
+        normalized_position = normalize_position(position)
+        self.assertEqual(normalized_position["symbol"], "GLD")
+        self.assertEqual(normalized_position["qty"], 12.5)
+        self.assertEqual(normalized_position["market_value"], 2500.50)
 
     def test_news_risk_detects_oil_geopolitics(self):
         items = [
