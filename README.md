@@ -20,6 +20,7 @@ It is not a promise of profitability. No trading bot can guarantee profits. The 
 - Compares strategy performance against explicit or blended benchmarks.
 - Runs parameter optimization, parameter-stability scoring, and walk-forward validation.
 - Exports analytics, plots, Monte Carlo robustness results, markdown reports, and a professional static HTML dashboard.
+- Can run a local dashboard trading desk for Alpaca paper order preview and confirmed submission.
 - Generates local paper orders and maintains a local paper account state.
 - Submits paper orders to Alpaca using paper credentials only.
 - Splits Alpaca notional orders into child orders under a configurable max notional cap.
@@ -586,6 +587,31 @@ Dashboard sections:
 
 The dashboard is self-contained static HTML with embedded SVG charts. It does not require a local server.
 
+### Dashboard Paper Order Controls
+
+Run the local trading dashboard server:
+
+```powershell
+python -m quantbot.cli serve-dashboard --config configs/real_data.json --max-order-notional 5000
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765
+```
+
+The local trading desk can:
+
+- show Alpaca paper account equity, cash, buying power, and position count
+- refresh the performance dashboard
+- preview the latest rebalance orders using actual Alpaca paper positions
+- run data-quality and news-risk checks before submission
+- block submission if Alpaca already has open paper orders
+- submit Alpaca paper orders only after typing `PAPER` into the confirmation box
+
+This is intentionally local-only by default. Keep `--host 127.0.0.1` unless you understand the network/security implications of exposing broker controls.
+
 ## News Risk Overlay
 
 The news-risk module scans headlines and maps themes to affected assets. It is intended as a risk/context overlay, not a standalone trading signal.
@@ -770,6 +796,7 @@ monte-carlo         Run block-bootstrap Monte Carlo robustness
 analytics           Export analytics CSV files
 plots               Generate PNG plots
 dashboard           Generate static HTML dashboard
+serve-dashboard     Run local dashboard with Alpaca paper order controls
 ```
 
 Use command-specific help:
@@ -807,6 +834,7 @@ The test suite covers:
 - Alpaca status and position normalization
 - news-risk detection
 - dashboard generation
+- dashboard paper-order controls
 
 ## Git and Generated Files
 

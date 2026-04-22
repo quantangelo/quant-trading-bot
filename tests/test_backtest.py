@@ -11,6 +11,7 @@ from quantbot.broker import Order
 from quantbot.config import BotConfig, CostConfig, DataConfig, RiskConfig, StrategyConfig, ValidationConfig
 from quantbot.config import BenchmarkConfig
 from quantbot.dashboard import write_dashboard
+from quantbot.dashboard_server import _orders_table, _submit_form
 from quantbot.data import load_csv_data, make_demo_data
 from quantbot.monte_carlo import monte_carlo_summary, simulate_return_paths
 from quantbot.news_risk import NewsItem, score_news, should_block_trading
@@ -322,6 +323,14 @@ class BacktestTests(unittest.TestCase):
             self.assertIn("Quant Bot Dashboard", content)
             self.assertIn("Executive Snapshot", content)
             self.assertIn("Equity Curve vs Benchmark", content)
+
+    def test_dashboard_order_controls_render_confirmation(self):
+        plan = {"orders": [Order("GLD", 0.25, 0.10, 1000.0, "BUY")], "blocked": False}
+        table = _orders_table(pd.DataFrame([plan["orders"][0].__dict__]))
+        form = _submit_form(plan)
+        self.assertIn("GLD", table)
+        self.assertIn("Type PAPER to confirm", form)
+        self.assertIn("Submit Paper Orders", form)
 
 
 def _restore_env(name: str, value: str | None) -> None:
